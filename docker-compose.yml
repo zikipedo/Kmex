@@ -1,0 +1,59 @@
+name: stockpro
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-stockpro}
+      POSTGRES_USER: ${POSTGRES_USER:-stockpro}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stockpro_dev_pwd}
+      TZ: Africa/Bamako
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stockpro} -d ${POSTGRES_DB:-stockpro}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "5433:5432"
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_DB: ${POSTGRES_DB:-stockpro}
+      POSTGRES_USER: ${POSTGRES_USER:-stockpro}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stockpro_dev_pwd}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-change-me-in-production-please-0123456789}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-0}
+      DJANGO_ALLOWED_HOSTS: "*"
+      SEED_DEMO: ${SEED_DEMO:-1}
+      MEDIA_ROOT: /app/media
+    volumes:
+      - media:/app/media
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8000/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+    volumes:
+      - media:/srv/media:ro
+
+volumes:
+  pgdata:
+  media:
