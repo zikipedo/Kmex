@@ -206,9 +206,10 @@ export default function ProductDetail() {
               <div className="mt-1 text-[12px] text-muted">{p.track_stock ? `Minimum ${qty(p.min_stock)} ${p.unit_code}` : 'Service — non stocké'}</div>
             </Card>
             <Card className="p-5">
-              <div className="label text-[10px]">{p.cost_avg !== undefined ? 'Coût moyen (CMUP)' : 'Unité'}</div>
-              <div className="num mt-2 font-display text-3xl font-bold">{p.cost_avg !== undefined ? money(p.cost_avg) : p.unit_code}</div>
-              {p.margin_pct !== undefined && <div className="mt-1 text-[12px] text-mint">Marge {pct(p.margin_pct)}</div>}
+              <div className="label text-[10px]">{p.cost_last !== undefined ? "Prix d'achat" : 'Unité'}</div>
+              <div className="num mt-2 font-display text-3xl font-bold">{p.cost_last !== undefined ? (Number(p.cost_last) ? money(p.cost_last) : '—') : p.unit_code}</div>
+              {p.cost_avg !== undefined && <div className="mt-1 text-[12px] text-muted">Coût moyen (CMUP) : {money(p.cost_avg)}</div>}
+              {p.margin_pct !== undefined && p.margin_pct !== null && <div className="mt-0.5 text-[12px] text-mint">Marge {pct(p.margin_pct)}</div>}
             </Card>
           </div>
           <Tabs value={tab} onChange={setTab} tabs={[{ key: 'overview', label: 'Vue d’ensemble' }, { key: 'movements', label: 'Mouvements' }, { key: 'prices', label: 'Historique des prix' }]} />
@@ -285,7 +286,7 @@ export default function ProductDetail() {
                   {prices.map((h) => (
                     <div key={h.id} className="flex items-center justify-between rounded-2xl border hairline px-4 py-3 text-[13px]">
                       <div>
-                        <div className="font-medium">{h.price_type === 'price_retail' ? 'Prix de vente' : h.price_type === 'price_wholesale' ? 'Prix de gros' : 'Prix promo'}</div>
+                        <div className="font-medium">{h.price_type === 'price_retail' ? 'Prix de vente' : h.price_type === 'price_wholesale' ? 'Prix de gros' : h.price_type === 'cost_last' ? "Prix d'achat" : 'Prix promo'}</div>
                         <div className="text-[12px] text-muted">{date(h.created_at, true)} · {h.changed_by} {h.reason && `· ${h.reason}`}</div>
                       </div>
                       <div className="num"><span className="text-muted line-through">{money(h.old_price)}</span> → <span className="font-semibold">{money(h.new_price)}</span></div>

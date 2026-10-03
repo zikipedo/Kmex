@@ -99,7 +99,8 @@ export default function Products() {
               ),
             },
             { key: 'cat', header: 'Catégorie', hideOnMobile: true, render: (p) => <span className="text-muted">{p.category_name}</span> },
-            { key: 'price', header: 'Prix', align: 'right', render: (p) => <span className="num font-semibold">{money(p.price_retail)}</span> },
+            ...(showCost ? [{ key: 'cost_last', header: "Prix d'achat", align: 'right' as const, render: (p: any) => <span className="num">{Number(p.cost_last) ? money(p.cost_last) : <span className="text-muted">—</span>}</span> }] : []),
+            { key: 'price', header: 'Prix de vente', align: 'right', render: (p) => <span className="num font-semibold">{money(p.price_retail)}</span> },
             ...(showCost ? [{ key: 'cost', header: 'CMUP', align: 'right' as const, hideOnMobile: true, render: (p: any) => <span className="num text-muted">{money(p.cost_avg)}</span> }] : []),
             ...(can('profit.view') ? [{ key: 'margin', header: 'Marge', align: 'right' as const, hideOnMobile: true, render: (p: any) => <span className="num text-mint">{pct(p.margin_pct)}</span> }] : []),
             { key: 'stock', header: 'Stock', align: 'right', render: (p) => <StockPill p={p} /> },
@@ -143,6 +144,12 @@ export default function Products() {
                       <span className="num font-display text-[17px] font-bold">{money(p.price_retail)}</span>
                       {can('profit.view') && p.margin_pct !== null && p.margin_pct !== undefined && <span className="num text-[11.5px] text-mint">{pct(p.margin_pct, 0)}</span>}
                     </div>
+                    {showCost && (
+                      <div className="mt-1 flex items-center justify-between text-[11.5px] text-muted">
+                        <span>Achat</span>
+                        <span className="num">{Number(p.cost_last) ? money(p.cost_last) : '—'}</span>
+                      </div>
+                    )}
                   </div>
                 </motion.button>
               ))}

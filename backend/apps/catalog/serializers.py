@@ -103,7 +103,7 @@ class ProductSerializer(serializers.ModelSerializer):
             "is_favorite", "status", "tags", "notes", "image", "stock", "stock_value", "margin_pct", "barcodes",
             "price_reason", "created_at", "updated_at", "version",
         ]
-        read_only_fields = ["cost_last", "cost_avg", "created_at", "updated_at", "version"]
+        read_only_fields = ["cost_avg", "created_at", "updated_at", "version"]
         extra_kwargs = {"internal_ref": {"required": False}, "sku": {"required": False}}
 
     def get_image(self, obj):
@@ -170,6 +170,12 @@ class ProductSerializer(serializers.ModelSerializer):
             for f in PRICE_FIELDS:
                 if f in attrs and attrs[f] != getattr(self.instance, f):
                     raise serializers.ValidationError({f: "Vous n'avez pas la permission de modifier les prix."})
+        # Le prix d'achat est une donnée sensible (PROD-006) : saisie réservée aux profils qui peuvent le voir.
+        if "cost_last" in attrs:
+            if request and not request.user.has_code("catalog.cost.view"):
+                attrs.pop("cost_last")
+            elif attrs["cost_last"] is not None and attrs["cost_last"] < 0:
+                raise serializers.ValidationError({"cost_last": "Le prix d'achat ne peut pas être négatif."})
         return attrs
 
     def create(self, validated):
@@ -184,6 +190,9 @@ class ProductSerializer(serializers.ModelSerializer):
             validated["sku"] = validated["internal_ref"].replace("PRD-", "SKU-")
         if not validated.get("tax") and validated["category"].default_tax_id:
             validated["tax"] = validated["category"].default_tax
+        # Sans stock, le coût moyen (CMUP) démarre au prix d'achat saisi ; il évoluera ensuite à chaque réception.
+        if validated.get("cost_last"):
+            validated["cost_avg"] = validated["cost_last"]
         product = Product.objects.create(**validated)
         for b in barcodes:
             ProductBarcode.objects.create(company=company, product=product, **b)
@@ -193,12 +202,18 @@ class ProductSerializer(serializers.ModelSerializer):
         barcodes = validated.pop("barcodes", None)
         reason = validated.pop("price_reason", "")
         request = self.context.get("request")
-        for f in PRICE_FIELDS:
+        for f in (*PRICE_FIELDS, "cost_last"):
             if f in validated and validated[f] != getattr(instance, f):
                 PriceHistory.objects.create(
                     company=instance.company, product=instance, price_type=f, old_price=getattr(instance, f),
                     new_price=validated[f], reason=reason, created_by=request.user if request else None,
                 )
+        # Tant qu'aucune unité n'est en stock, le CMUP suit le prix d'achat saisi (sinon il reste calculé par les réceptions).
+        if validated.get("cost_last") is not None and validated["cost_last"] != instance.cost_last:
+            from apps.inventory.models import StockLevel
+
+            if not StockLevel.objects.filter(product=instance, on_hand__gt=0).exists():
+                instance.cost_avg = validated["cost_last"]
         for k, v in validated.items():
             setattr(instance, k, v)
         instance.version += 1

@@ -7,7 +7,7 @@ import { showError } from '@/lib/hooks'
 import { useCan } from '@/store/auth'
 
 const EMPTY = {
-  name: '', sku: '', barcode: '', type: 'simple', category: '', brand: '', unit: '', tax: '', description: '', price_retail: '',
+  name: '', sku: '', barcode: '', type: 'simple', category: '', brand: '', unit: '', tax: '', description: '', cost_last: '', price_retail: '',
   price_wholesale: '', wholesale_min_qty: '', promo_price: '', promo_start: '', promo_end: '', min_stock: '0', max_stock: '',
   is_favorite: false, status: 'active', tags: '', price_reason: '',
 }
@@ -47,6 +47,8 @@ export function ProductForm({ open, onClose, initial, onSaved }: { open: boolean
       if (body[k] === '') body[k] = null
     })
     if (!body.sku) delete body.sku
+    if (!canCost) delete body.cost_last
+    else body.cost_last = body.cost_last === '' || body.cost_last === null ? 0 : body.cost_last
     try {
       const p = initial ? await api(`/products/${initial.id}`, { method: 'PATCH', body }) : await post('/products', body)
       toast.success(initial ? 'Produit mis à jour' : 'Produit créé')
@@ -60,6 +62,12 @@ export function ProductForm({ open, onClose, initial, onSaved }: { open: boolean
     }
   }
   const canPrice = !initial || can('catalog.price.edit')
+  const canCost = can('catalog.cost.view')
+  const taxId = f.tax || refs.categories.find((c: any) => c.id === f.category)?.default_tax
+  const taxRate = Number(refs.taxes.find((t: any) => t.id === taxId)?.rate ?? 0)
+  const priceHT = Number(f.price_retail || 0) / (1 + taxRate / 100)
+  const cost = Number(f.cost_last || 0)
+  const marginPct = cost > 0 && priceHT > 0 ? ((priceHT - cost) / priceHT) * 100 : null
   return (
     <Modal
       open={open}
@@ -135,8 +143,25 @@ export function ProductForm({ open, onClose, initial, onSaved }: { open: boolean
           </Select>
         </Field>
         <div className="md:col-span-3">
-          <div className="label mb-3 mt-2">Prix de vente {!canPrice && '· lecture seule'}</div>
+          <div className="label mb-3 mt-2">Prix {!canPrice && '· vente en lecture seule'}</div>
           <div className="grid gap-4 md:grid-cols-3">
+            {canCost && (
+              <Field
+                label="Prix d'achat (coût fournisseur HT)"
+                error={errors.cost_last}
+                hint={
+                  marginPct === null ? (
+                    'Mis à jour automatiquement à chaque réception'
+                  ) : (
+                    <span className={marginPct < 0 ? 'text-danger' : marginPct < 10 ? 'text-warn' : 'text-mint'}>
+                      Marge estimée : {marginPct.toFixed(1).replace('.', ',')} % ({Math.round(priceHT - cost).toLocaleString('fr-FR')} F / unité)
+                    </span>
+                  )
+                }
+              >
+                <Input inputMode="numeric" value={f.cost_last ?? ''} onChange={set('cost_last')} placeholder="Ex. 13 500" />
+              </Field>
+            )}
             <Field label="Prix de vente TTC" required error={errors.price_retail}>
               <Input disabled={!canPrice} inputMode="numeric" value={f.price_retail} onChange={set('price_retail')} />
             </Field>

@@ -463,3 +463,32 @@ def test_cash_004_bank_deposit_keeps_float(env):
     transfer_funds(user=env.manager, from_account=env.cash_acc, to_account=env.bank, amount=2360)
     assert account_balance(env.bank) == 2360
     assert fin.session_expected(s)["cash"] == D(10000)  # il ne reste que le fond de caisse
+
+
+def test_prod_purchase_price_entry_and_masking(env):
+    """Prix d'achat saisi à la création → CMUP initial ; invisible et non modifiable sans permission (PROD-006)."""
+    body = {"name": "Sucre en poudre 1 kg", "category": str(env.cat.pk), "unit": str(env.unit.pk), "price_retail": "1180", "cost_last": "700"}
+    r = env.client(env.stockman).post("/api/v1/products", body, format="json")
+    assert r.status_code == 201, r.data
+    assert D(r.data["cost_last"]) == 700 and D(r.data["cost_avg"]) == 700
+    assert "margin_pct" not in r.data  # le responsable de stock ne voit pas les marges
+    pid = r.data["id"]
+    # Changement de prix d'achat sans stock : historisé et répercuté sur le CMUP
+    r = env.client(env.stockman).patch(f"/api/v1/products/{pid}", {"cost_last": "750", "price_reason": "Hausse fournisseur"}, format="json")
+    assert D(r.data["cost_avg"]) == 750
+    from apps.catalog.models import PriceHistory
+    assert PriceHistory.objects.filter(product_id=pid, price_type="cost_last", new_price=750).exists()
+    # Le magasinier (sans catalog.cost.view) ne voit pas le prix et ne peut pas le changer
+    view = env.client(env.storekeeper).get(f"/api/v1/products/{pid}")
+    assert "cost_last" not in view.data
+
+
+def test_prod_purchase_price_not_writable_without_permission(env):
+    from apps.catalog.models import Product
+    from apps.accounts.models import Permission
+
+    role = env.storekeeper.roles.first()
+    role.permissions.add(Permission.objects.get(code="catalog.manage"))
+    r = env.client(env.storekeeper).patch(f"/api/v1/products/{env.product.pk}", {"cost_last": "1"}, format="json")
+    assert r.status_code == 200
+    assert Product.objects.get(pk=env.product.pk).cost_last != 1
